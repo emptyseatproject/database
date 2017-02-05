@@ -56,26 +56,30 @@ def readfile(bus_id, station_list, sta_list):  # bus_id = m4101 (text)
                             pno1=parts[5], seat1=parts[6], locno1=parts[7], pred1=parts[8],
                             timestamp=parts[13], arrive_flag=parts[16], sta_order=parts[18], route=bus_id,
                             pno2 = parts[9],seat2 = parts[10], locno2 = parts[11], pred2 = parts[12], pred_diff = parts[15],
-                            waitsec = parts[14])
+                            waitsec = parts[14],
+                            sta_idx = idx)
 
             elif parts[9] != 'None' and parts[14] == 'None':
                 a = Businfo(arrival_time=parts[0], weekday=parts[1], routeid=parts[2], stationid=parts[3],
                             flag=parts[4],
                             pno1=parts[5], seat1=parts[6], locno1=parts[7], pred1=parts[8],
                             timestamp=parts[13], arrive_flag=parts[16], sta_order=parts[18], route=bus_id,
-                            pno2 = parts[9],seat2= parts[10], locno2 = parts[11], pred2= parts[12], pred_diff= parts[15])
+                            pno2 = parts[9],seat2= parts[10], locno2 = parts[11], pred2= parts[12], pred_diff= parts[15],
+                            sta_idx = idx)
 
             elif parts[9] == 'None' and parts[14] != 'None':
                 a = Businfo(arrival_time=parts[0], weekday=parts[1], routeid=parts[2], stationid=parts[3],
                             flag=parts[4],
                             pno1=parts[5], seat1=parts[6], locno1=parts[7], pred1=parts[8],
                             timestamp=parts[13], arrive_flag=parts[16], sta_order=parts[18], route=bus_id,
-                            waitsec= parts[14])
+                            waitsec= parts[14],
+                            sta_idx = idx)
             elif parts[9] == 'None' and parts[14] == 'None':
                 a = Businfo(arrival_time=parts[0], weekday=parts[1], routeid=parts[2], stationid=parts[3],
                             flag=parts[4],
                             pno1=parts[5], seat1=parts[6], locno1=parts[7], pred1=parts[8],
-                            timestamp=parts[13], arrive_flag=parts[16], sta_order=parts[18], route=bus_id)
+                            timestamp=parts[13], arrive_flag=parts[16], sta_order=parts[18], route=bus_id,
+                            sta_idx = idx)
 
             a.save()
         idx = idx+1
