@@ -1,5 +1,3 @@
-#not-null constraint. 
-
 from django.db import models
 from django.utils import timezone
 
@@ -29,6 +27,11 @@ class Businfo(models.Model):
 
 	route = models.CharField(max_length = 10)	#M4101
 	dbcreated = models.DateTimeField(auto_now=True) #from str to Integer or CharField
+	
+	sta_idx = models.IntegerField(null=True)
+	delta_boarder = models.IntegerField(null=True)
+	boarder = models.IntegerField(null=True)
+	full_flag = models.NullBooleanField(null=True)
 
 	def __unicode__(self):
 		return self.route + (' : ') + str(self.sta_order)
