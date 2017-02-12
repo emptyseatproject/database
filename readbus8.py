@@ -50,6 +50,14 @@ def readfile(bus_id, station_list, sta_list):  # bus_id = m4101 (text)
             #parts = line.split(' ')
             parts = line.split('\t')
 
+
+            if parts[8] == 'None':
+                parts[8] = 1
+            if parts[12] =='None':
+                parts[12] = 1000
+            if parts[15] == 'None':
+                parts[15] = 999
+
             if parts[9] != 'None' and parts[14] != 'None':
                 a = Businfo(arrival_time=parts[0], weekday=parts[1], routeid=parts[2], stationid=parts[3],
                             flag=parts[4],
