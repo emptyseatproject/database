@@ -163,7 +163,7 @@ def make_file(bus_id, station_list):
         kor = dt
 
     idx = 0
-    detail_a_station_filename = "/home/ec2-user/cov/bus8/%s/eachday_wholedata_w/%s_%s_w.txt" % (
+    detail_a_station_filename = "/home/ec2-user/cov/bus10/%s/eachday_wholedata_w/%s_%s_w.txt" % (
         bus_id, bus_id, kor.date())
     d_station = open(detail_a_station_filename, 'w')
 
@@ -184,8 +184,8 @@ def make_file(bus_id, station_list):
 def make_each_station_file_a(bus_id, station_list):
     idx = 0
     while (idx < len(station_list)):
-#/home/ec2-user/cov/bus8/%s/
-        detail_a_station_filename = "/home/ec2-user/cov/bus8/%s/wholedata_a/%s_%s_a_whole.txt" % (
+#/home/ec2-user/cov/bus10/%s/
+        detail_a_station_filename = "/home/ec2-user/cov/bus10/%s/wholedata_a/%s_%s_a_whole.txt" % (
         bus_id, bus_id, station_list[idx].sta_order)
         d_station = open(detail_a_station_filename, 'a')
 
@@ -202,7 +202,7 @@ def make_each_station_file_a(bus_id, station_list):
 
 
     idx = 0
-    detail_a_station_filename = "/home/ec2-user/cov/bus8/%s/onefile_a/%s_a_whole.txt" % (
+    detail_a_station_filename = "/home/ec2-user/cov/bus10/%s/onefile_a/%s_a_whole.txt" % (
         bus_id, bus_id)
     d_station = open(detail_a_station_filename, 'a')
 
