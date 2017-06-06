@@ -10,16 +10,35 @@ import psycopg2 as pg2
 
 cnt = 0
 class Station:
-    def __init__(self, routeid, stationid):
+    def __init__(self, routeid, stationid, route):
         self.route_id = routeid
         self.station_id = stationid
         self.soonbus_pno1 = 'empty'
         self.bus_list = []
         self.sta_order = ' '
+        self.busname = route
 
     def get_arrivalurl(self):
         ### NEED API KEYS ###
-        key = keyfile.info_4th_api
+        global cnt
+        if cnt<70000:
+            key = keyfile.info_1st_api
+        elif cnt>=70000 and cnt < 140000:
+            key = keyfile.info_2nd_api
+        elif cnt>=140000 and cnt < 210000:
+            key = keyfile.info_3rd_api
+        elif cnt>=210000 and cnt < 280000:
+            key = keyfile.info_4th_api
+        elif cnt>=280000 and cnt < 350000:
+            key = keyfile.info_5th_api
+        elif cnt>=350000 and cnt < 420000:
+            key = keyfile.info_6th_api
+        elif cnt>=420000 and cnt < 490000:
+            key = keyfile.info_7th_api
+        elif cnt>=490000:
+            key = keyfile.info_8th_api
+
+
         url = "http://openapi.gbis.go.kr/ws/rest/busarrivalservice?serviceKey=%s&routeId=%s&stationId=%s" % (
         key, self.route_id, self.station_id)
         data = urllib.request.urlopen(url).read()  # python3
@@ -32,12 +51,18 @@ class Station:
         f.close()
 
         tree = etree.parse(filename)
+        cnt += 1
+        print(key, cnt)
         return tree
 
-    def extract_bus_info(self, tree, conn, busname):
+    def extract_bus_info(self, tree, conn):
+
         busarrivalitem = tree.find('msgBody/busArrivalItem')
 
+
         qtime = tree.findtext('msgHeader/queryTime')
+
+
         flag = busarrivalitem.find('flag').text
         locno1 = busarrivalitem.find('locationNo1').text
         locno2 = busarrivalitem.find('locationNo2').text
@@ -55,29 +80,55 @@ class Station:
         dt = datetime.datetime.now()
         kor = dt + datetime.timedelta(hours=9)
 
-        d_q_time = datetime.datetime.strptime(qtime, '%Y-%m-%d %H:%M:%S.%f')
-        d_time = str(d_q_time.hour) + str(':') + str(d_q_time.minute) + str(':') + str(d_q_time.second)
+        arrival_time = datetime.datetime.strptime(qtime, '%Y-%m-%d %H:%M:%S.%f')
+        round_time = self.roundTime(arrival_time, 10 * 60)
 
         pred_diff = None
         if pred1 != None and pred2 != None:
             pred_diff = int(pred2) - int(pred1)
 
-        ###      0          1           2         3       4      5     6       7       8    9       10      11      12      13                      14  15         16  17       18
-        bus = [qtime, kor.weekday(), routeid, stationid, flag, pno1, seat1, locno1, pred1, pno2, seat2, locno2, pred2, int(d_q_time.timestamp()), None, pred_diff, 0, d_time, station_order]
+
+
+        if kor.weekday() == 5:
+            add_pred1 = arrival_time + datetime.timedelta(minutes = int(pred1))
+            round_pred1 = self.roundTime(add_pred1, 15*60)
+
+            if pred2 !=None:
+                add_pred2 = arrival_time + datetime.timedelta(minutes = int(pred2))
+                round_pred2 = self.roundTime(add_pred2, 15*60)
+            else:
+                round_pred2 = None
+        elif kor.weekday() == 6:
+            add_pred1 = arrival_time + datetime.timedelta(minutes=int(pred1))
+            round_pred1 = self.roundTime(add_pred1, 30 * 60)
+
+            if pred2 != None:
+                add_pred2 = arrival_time + datetime.timedelta(minutes=int(pred2))
+                round_pred2 = self.roundTime(add_pred2, 30 * 60)
+            else:
+                round_pred2 = None
+        else:
+            add_pred1 = arrival_time + datetime.timedelta(minutes=int(pred1))
+            round_pred1 = self.roundTime(add_pred1, 10 * 60)
+
+            if pred2 != None:
+                add_pred2 = arrival_time + datetime.timedelta(minutes=int(pred2))
+                round_pred2 = self.roundTime(add_pred2, 10 * 60)
+            else:
+                round_pred2 = None
+
+        ###      0          1           2         3       4      5     6       7       8    9       10      11      12      13                      14  15         16       17       18                19
+        bus = [qtime, kor.weekday(), routeid, stationid, flag, pno1, seat1, locno1, pred1, pno2, seat2, locno2, pred2, int(arrival_time.timestamp()), None, pred_diff, 0, station_order, self.busname, round_time, round_pred1, round_pred2]
 
         return bus
 
-    def get_businfo (self, bus, conn, busname):
-        arrival_time = datetime.datetime.strptime(bus[0], '%Y-%m-%d %H:%M:%S.%f')
-        round_time = self.roundTime(arrival_time, 10*60)
-
-
+    def insert_realtime_station (self, bus, conn):
         cur = conn.cursor()
         sql = """
-                    INSERT INTO realtime_station (arrival_time,weekday,routeid,stationid,flag,pno1,seat1,locno1,pred1, pno2,seat2,locno2,pred2,pred_diff,sta_order,route, ten_minutes)
-                    values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
+                    INSERT INTO realtime_station (arrival_time, weekday, routeid, stationid, flag, pno1, seat1, locno1, pred1, pno2,seat2,locno2,pred2,pred_diff,sta_order,route, ten_minutes, round_pred1, round_pred2)
+                    values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
                     """
-        data = (bus[0],bus[1],bus[2],bus[3],bus[4],bus[5],bus[6],bus[7],bus[8],bus[9],bus[10],bus[11],bus[12],bus[15],bus[18], busname, round_time)
+        data = (bus[0],bus[1],bus[2],bus[3],bus[4],bus[5],bus[6],bus[7],bus[8],bus[9],bus[10],bus[11],bus[12],bus[15],bus[17], bus[18], bus[19], bus[20], bus[21])
         cur.execute(sql, data)
         conn.commit()
 
@@ -112,12 +163,12 @@ class Station:
             return False
         return False
 
-    def get_loc(self, conn, busname):
+    def get_buslisturl(self):
         key = keyfile.loc_1st_api
         url = "http://openapi.gbis.go.kr/ws/rest/buslocationservice?serviceKey=%s&routeId=%s" % (key, self.route_id)
         data = urllib.request.urlopen(url).read()  # python3
         # data = urllib2.urlopen(url).read() # python2
-        time.sleep(0.01)
+        time.sleep(0.05)
 
         filename = "%s_locations.xml" % self.route_id
         f = open(filename, 'wb')
@@ -125,7 +176,20 @@ class Station:
         f.close()
 
         tree = etree.parse(filename)
+        return tree
 
+    def insert_realtime_buslist(self, conn):
+        tree = self.get_buslisturl()
+        idx = 0
+        while idx <= 5:
+            if tree.findtext('comMsgHeader/returnCode') != '00':
+                print("No list ", idx, self.busname)
+                tree = self.get_buslisturl()
+                idx = idx + 1
+            elif tree.findtext('comMsgHeader/returnCode') == '00':
+                break
+            else:
+                return
 
         lst = tree.findall('msgBody/busLocationList')
         cur = conn.cursor()
@@ -137,9 +201,21 @@ class Station:
         for busarrivalitem in lst:
             data = (tree.findtext('msgHeader/queryTime'), busarrivalitem.find('routeId').text, busarrivalitem.find('stationId').text,
                     busarrivalitem.find('plateNo').text, busarrivalitem.find('remainSeatCnt').text,
-                    busarrivalitem.find('stationSeq').text, busname)
+                    busarrivalitem.find('stationSeq').text, self.busname)
             cur.execute(sql, data)
             conn.commit()
+
+    def insert_arrivedbus(self, conn, bus):
+
+        cur = conn.cursor()
+        sql = """
+                            INSERT INTO test_bus (arrival_time,weekday,routeid,stationid,flag,pno1,seat1,locno1,pred1, pno2,seat2,locno2,pred2, waitsec, pred_diff, arrive_flag, sta_order,route, ten_minutes)
+                            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
+                            """
+        data = (bus[0], bus[1], bus[2], bus[3], bus[4], bus[5], bus[6], bus[7], bus[8], bus[9], bus[10], bus[11], bus[12], bus[14], bus[15], bus[16], bus[17], bus[18], bus[19])
+        cur.execute(sql, data)
+        conn.commit()
+
 
     def roundTime(self, dt=None, roundTo=60): #dt = datetime.dattime object, roundTo ex) 10*60  round 10 minutes.
         if dt == None: dt = datetime.datetime.now()
@@ -149,12 +225,14 @@ class Station:
         only_time = round_datetime.time()
         return only_time
 
-    def operate(self, conn, busname):
+
+
+    def operate(self, conn):
         try:
             tree = self.get_arrivalurl()
         except:
             # print("operate except")
-            time.sleep(0.01)
+            time.sleep(0.02)
             try:
                 tree = self.get_arrivalurl()
             except:
@@ -165,16 +243,44 @@ class Station:
         if tree.findtext('msgHeader/resultCode') == '8':
             tree = self.get_arrivalurl()
 
-        error_code = tree.findtext('msgHeader/resultCode')
+        idx = 0
 
-        if error_code != '4' and error_code != '1' and error_code != '8':
-            busdata = self.extract_bus_info(tree,conn,busname)
-            self.get_businfo(busdata,conn,busname)
+        while idx <=5:
+            if tree.findtext('msgBody/busArrivalItem/flag') == None and tree.findtext('msgHeader/resultCode') != '4':
+                print("No flag ", idx)
+                tree = self.get_arrivalurl()
+                idx = idx + 1
+            else:
+                break
+        '''
+        if tree.findtext('msgBody/busArrivalItem/flag') == None and tree.findtext('msgHeader/resultCode') != '4':
+            print("No flag 1")
+            tree = self.get_arrivalurl()
+            if tree.findtext('msgBody/busArrivalItem/flag') == None and tree.findtext('msgHeader/resultCode') != '4':
+                print("No flag 2")
+                tree = self.get_arrivalurl()
+                if tree.findtext('msgBody/busArrivalItem/flag') == None and tree.findtext('msgHeader/resultCode') != '4':
+                    print("No flag 3")
+                    tree = self.get_arrivalurl()
+                    if tree.findtext('msgBody/busArrivalItem/flag')== None and tree.findtext('msgHeader/resultCode') != '4':
+                        print("No flag 4")
+                        tree = self.get_arrivalurl()
+                        if tree.findtext('msgBody/busArrivalItem/flag') == None and tree.findtext('msgHeader/resultCode') != '4':
+                            return False
+        '''
+
+        if tree.findtext('msgHeader/resultCode') != '4' and tree.findtext('msgBody/busArrivalItem/flag') != None:
+            #print(self.busname, self.station_id, self.sta_order)
+
+            busdata = self.extract_bus_info(tree,conn)
+            self.insert_realtime_station(busdata,conn)
+
+
 
         try:
             if len(self.bus_list) >= 1:
                 if self.bus_list[-1][5] == tree.findtext('msgBody/busArrivalItem/plateNo1'):
-                    #self.bus_list[-1] = self.extract_bus_info(tree, conn, busname)
+                    #busdata = self.extract_bus_info(tree, conn)
                     self.bus_list[-1] = busdata
         except:
             print("it's okay")
@@ -185,10 +291,10 @@ class Station:
                 if self.bus_list[-1][16] == 0 or self.bus_list[-1][16] == 2:
                     self.bus_list[-1][0] = tree.findtext('msgHeader/queryTime')
                     self.bus_list[-1][13] = int(time.time())
+                    self.bus_list[-1][14] = self.bus_list[-1][13] - self.bus_list[-2][13]
                     self.bus_list[-1][16] = 1
-                    d_q_time = datetime.datetime.strptime(self.bus_list[-1][0], '%Y-%m-%d %H:%M:%S.%f')
-                    d_time = str(d_q_time.hour) + str(':') + str(d_q_time.minute) + str(':') + str(d_q_time.second)
-                    self.bus_list[-1][17] = d_time
+                    if self.bus_list[-1][7] == '1':
+                        self.insert_arrivedbus(conn, self.bus_list[-1])
                 self.bus_list[-1][14] = self.bus_list[-1][13] - self.bus_list[-2][13]
 
             elif len(self.bus_list) == 1:
@@ -196,17 +302,15 @@ class Station:
                     self.bus_list[0][0] = tree.findtext('msgHeader/queryTime')
                     self.bus_list[0][13] = int(time.time())
                     self.bus_list[0][16] = 1
-                    d_q_time = datetime.datetime.strptime(self.bus_list[-1][0], '%Y-%m-%d %H:%M:%S.%f')
-                    d_time = str(d_q_time.hour) + str(':') + str(d_q_time.minute) + str(':') + str(d_q_time.second)
-                    self.bus_list[-1][17] = d_time
+                    if self.bus_list[-1][7] == '1':
+                        self.insert_arrivedbus(conn, self.bus_list[-1])
+
 
             if tree.findtext('msgHeader/resultCode') == '4':  # no arriving bus
                 self.soonbus_pno1 = 'empty'
 
             else:
-                newbus = self.extract_bus_info(tree, conn, busname)
-
-                newbus = busdata
+                newbus = self.extract_bus_info(tree, conn)
                 self.append_buslist(newbus)
                 self.soonbus_pno1 = newbus[5]
 
@@ -282,13 +386,14 @@ def make_each_station_file_a(bus_id, station_list):
 
 def main():
     global cnt
-    print("start")
     ########################
     #########################
+
+    
     m4101_routeid = 234000875  # M4101
     m4101_stationid = [228000950, 228000911, 228000883, 206000230, 101000002, 100000001, 101000141, 101000264,
                        101000026, 101000114, 101000148, 101000001, 206000220, 228000905, 228000920, 228002278]
-    m4101_sta = [1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 17, 18, 24, 25, 26, 27]
+    m4101_sta = [2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 17, 18, 24, 25, 26, 27]
 
     m7119_routeid = 218000015  # m7119
     m7119_stationid = [219000711, 219000457, 219000714, 219000356, 219000370, 112000012, 112000016,
@@ -349,9 +454,9 @@ def main():
 ##############################
 #############################
     m5422_routeid = 234001318
-    m5422_stationid = [203000023, 203000116, 203000069, 203000294, 203000399, 203000042, 121000086, 121000945, 121000921,
+    m5422_stationid = [203000116, 203000069, 203000294, 203000399, 203000042, 121000086, 121000945, 121000921,
                        121000510, 121000971, 121000220, 203000041, 203000400, 203000295, 203000177, 203000083, 203000028]
-    m5422_sta = [1, 3, 4, 5, 6, 7, 16, 17, 18, 20, 21, 22, 27, 28, 29, 30, 31, 32]
+    m5422_sta = [3, 4, 5, 6, 7, 16, 17, 18, 20, 21, 22, 27, 28, 29, 30, 31, 32]
 
     m6427_routeid = 232000075
     m6427_stationid = [232000741, 232000545, 232000553, 232000758, 232000727, 121000020, 121000018, 121000013,
@@ -369,93 +474,89 @@ def main():
     ####
     ####
     while (True):
-        print("where")
         # print("append list")
 
         m4101_station_list = []
         for i in m4101_stationid:
-            m4101_station_list.append(Station(m4101_routeid, i))
+            m4101_station_list.append(Station(m4101_routeid, i, "m4101"))
 
         m7119_station_list = []
         for i in m7119_stationid:
-            m7119_station_list.append(Station(m7119_routeid, i))
+            m7119_station_list.append(Station(m7119_routeid, i, "m7119"))
 
         m7106_station_list = []
         for i in m7106_stationid:
-            m7106_station_list.append(Station(m7106_routeid, i))
+            m7106_station_list.append(Station(m7106_routeid, i, "m7106"))
 
         m7111_station_list = []
         for i in m7111_stationid:
-            m7111_station_list.append(Station(m7111_routeid, i))
+            m7111_station_list.append(Station(m7111_routeid, i, "m7111"))
 
         m6117_station_list = []
         for i in m6117_stationid:
-            m6117_station_list.append(Station(m6117_routeid, i))
+            m6117_station_list.append(Station(m6117_routeid, i, "m6117"))
 
         m5121_station_list = []
         for i in m5121_stationid:
-            m5121_station_list.append(Station(m5121_routeid, i))
+            m5121_station_list.append(Station(m5121_routeid, i, "m5121"))
 
         m4108_station_list = []
         for i in m4108_stationid:
-            m4108_station_list.append(Station(m4108_routeid, i))
+            m4108_station_list.append(Station(m4108_routeid, i, "m4108"))
 
         m4102_station_list = []
         for i in m4102_stationid:
-            m4102_station_list.append(Station(m4102_routeid, i))
+            m4102_station_list.append(Station(m4102_routeid, i, "m4102"))
 
         m4403_station_list = []
         for i in m4403_stationid:
-            m4403_station_list.append(Station(m4403_routeid, i))
+            m4403_station_list.append(Station(m4403_routeid, i, "m4403"))
 
         m7625_station_list = []
         for i in m7625_stationid:
-            m7625_station_list.append(Station(m7625_routeid, i))
+            m7625_station_list.append(Station(m7625_routeid, i, "m7625"))
 
         m7426_station_list = []
         for i in m7426_stationid:
-            m7426_station_list.append(Station(m7426_routeid, i))
+            m7426_station_list.append(Station(m7426_routeid, i, "m7426"))
 
         m5422_station_list = []
         for i in m5422_stationid:
-            m5422_station_list.append(Station(m5422_routeid, i))
+            m5422_station_list.append(Station(m5422_routeid, i, "m5422"))
 
         m6427_station_list = []
         for i in m6427_stationid:
-            m6427_station_list.append(Station(m6427_routeid, i))
+            m6427_station_list.append(Station(m6427_routeid, i, "m6427"))
 
         m7412_station_list = []
         for i in m7412_stationid:
-            m7412_station_list.append(Station(m7412_routeid, i))
+            m7412_station_list.append(Station(m7412_routeid, i, "m7412"))
 
         m5107_station_list = []
         for i in m5107_stationid:
-            m5107_station_list.append(Station(m5107_routeid, i))
+            m5107_station_list.append(Station(m5107_routeid, i, "m5107"))
 
-        # while ( (time.localtime().tm_min >=0) and (time.localtime().tm_min <= 57)):
 
         dt = datetime.datetime.now()
-        ####kor = dt + datetime.timedelta(hours=9)
-        kor = dt + datetime.timedelta(hours=0)
+        kor = dt + datetime.timedelta(hours=9)
+        ####kor = dt + datetime.timedelta(hours=0)
 
-        conn = pg2.connect(host=keyfile.hostid, port=keyfile.portid, database=keyfile.databaseid, user=keyfile.userid,
-                           password=keyfile.passwordid)  # myprojectuser1
+        conn = pg2.connect(host=keyfile.hostid, port=keyfile.portid, database=keyfile.databaseid, user=keyfile.userid, password=keyfile.passwordid)  # myprojectuser1
         cur = conn.cursor()
         cur.execute("""DELETE FROM realtime_buslist;""")
         cur.execute("""DELETE FROM realtime_station;""")
+        conn.commit()
         cur.close()
         conn.close()
-
         while ((kor.hour >= 4) or (kor.hour < 1)):
             conn = pg2.connect(host=keyfile.hostid, port=keyfile.portid, database=keyfile.databaseid, user=keyfile.userid,
                                password=keyfile.passwordid)  # myprojectuser1
             cur = conn.cursor()
 
-            ####        while ((dt.hour >= 00 and dt.minute > 0) and (dt.hour < 1 )):
 
             dt = datetime.datetime.now()
-            ####kor = dt + datetime.timedelta(hours=9)
-            kor = dt + datetime.timedelta(hours=0)
+            kor = dt + datetime.timedelta(hours=9)
+            ####kor = dt + datetime.timedelta(hours=0)
             ####            if(kor.hour == 21 and kor.minute >= 37):
             ####               break
             if kor.hour == 1:
@@ -463,62 +564,65 @@ def main():
 
 
             for k in range(len(m5422_station_list)):
-                m5422_station_list[k].operate(conn, "m5422")
-            m5422_station_list[0].get_loc(conn,"m5422")
-
+                m5422_station_list[k].operate(conn)
+            m5422_station_list[0].insert_realtime_buslist(conn)
+            
             for k in range(len(m4101_station_list)):
-                m4101_station_list[k].operate(conn, "m4101")
-            m4101_station_list[0].get_loc(conn, "m4101")
+                m4101_station_list[k].operate(conn)
+            m4101_station_list[0].insert_realtime_buslist(conn)
 
-            '''
             for k in range(len(m7412_station_list)):
-                m7412_station_list[k].operate(conn,"m7412")
-            m7412_station_list[0].get_loc(conn,"m7412")
-            for k in range(len(m4101_station_list)):
-                m4101_station_list[k].operate(conn,"m4101")
-            m4101_station_list[0].get_loc(conn,"m4101")
-            '''
-
-
-            '''
+                m7412_station_list[k].operate(conn)
+            m7412_station_list[0].insert_realtime_buslist(conn)
+            
             for k in range(len(m7119_station_list)):
                 m7119_station_list[k].operate(conn)
+            m7119_station_list[0].insert_realtime_buslist(conn)
 
             for k in range(len(m7106_station_list)):
-                m7106_station_list[k].operate()
+                m7106_station_list[k].operate(conn)
+            m7106_station_list[0].insert_realtime_buslist(conn)
 
             for k in range(len(m7111_station_list)):
-                m7111_station_list[k].operate()
-
+                m7111_station_list[k].operate(conn)
+            m7111_station_list[0].insert_realtime_buslist(conn)
+            
             for k in range(len(m6117_station_list)):
-                m6117_station_list[k].operate()
+                m6117_station_list[k].operate(conn)
+            m6117_station_list[0].insert_realtime_buslist(conn)
 
             for k in range(len(m5121_station_list)):
-                m5121_station_list[k].operate()
+                m5121_station_list[k].operate(conn)
+            m5121_station_list[0].insert_realtime_buslist(conn)
 
             for k in range(len(m4108_station_list)):
-                m4108_station_list[k].operate()
-
+                m4108_station_list[k].operate(conn)
+            m4108_station_list[0].insert_realtime_buslist(conn)
+            
             for k in range(len(m4102_station_list)):
-                m4102_station_list[k].operate()
-
+                m4102_station_list[k].operate(conn)
+            m4102_station_list[0].insert_realtime_buslist(conn)
+            
             for k in range(len(m4403_station_list)):
-                m4403_station_list[k].operate()
-
+                m4403_station_list[k].operate(conn)
+            m4403_station_list[0].insert_realtime_buslist(conn)
+            
             for k in range(len(m7625_station_list)):
-                m7625_station_list[k].operate()
+                m7625_station_list[k].operate(conn)
+            m7625_station_list[0].insert_realtime_buslist(conn)
 
             for k in range(len(m7426_station_list)):
-                m7426_station_list[k].operate()
-
+                m7426_station_list[k].operate(conn)
+            m7426_station_list[0].insert_realtime_buslist(conn)
 
             for k in range(len(m6427_station_list)):
-                m6427_station_list[k].operate()
-
+                m6427_station_list[k].operate(conn)
+            m6427_station_list[0].insert_realtime_buslist(conn)                
 
             for k in range(len(m5107_station_list)):
-                m5107_station_list[k].operate()
-
+                m5107_station_list[k].operate(conn)
+            m5107_station_list[0].insert_realtime_buslist(conn)
+            
             make_file("m4101", m4101_station_list)
             make_file("m7119", m7119_station_list)
             make_file("m7106", m7106_station_list)
@@ -538,11 +642,10 @@ def main():
             make_file("m7412", m7412_station_list)
 
             make_file("m5107", m5107_station_list)
-            '''
+            
             # Freq = 2500
             # Dur = 1000
             # winsound.Beep(Freq,Dur)
-            print(cnt)
             print(kor)
 
             cur.execute("""
@@ -571,30 +674,10 @@ def main():
                         """)
             conn.commit()
 
-            print("sleep 22")
+            print("*********************************************************************sleep 2***************************************************")
             cur.close()
             conn.close()
-            time.sleep(60)
-
-        make_each_station_file_a("m4101", m4101_station_list)
-        make_each_station_file_a("m4108", m4108_station_list)
-        make_each_station_file_a("m4403", m4403_station_list)
-
-        make_each_station_file_a("m7119", m7119_station_list)
-        make_each_station_file_a("m7106", m7106_station_list)
-        make_each_station_file_a("m7111", m7111_station_list)
-        make_each_station_file_a("m6117", m6117_station_list)
-
-        make_each_station_file_a("m5121", m5121_station_list)
-        make_each_station_file_a("m4102", m4102_station_list)
-        make_each_station_file_a("m7625", m7625_station_list)
-        make_each_station_file_a("m7426", m7426_station_list)
-
-        make_each_station_file_a("m5422", m5422_station_list)
-        make_each_station_file_a("m6427", m6427_station_list)
-        make_each_station_file_a("m7412", m7412_station_list)
-
-        make_each_station_file_a("m5107", m5107_station_list)
+            time.sleep(2)
 
         #############
         #############
@@ -607,4 +690,5 @@ def main():
 #############
 if __name__ == "__main__":
     main()
+
 
